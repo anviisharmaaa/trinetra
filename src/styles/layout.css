@@ -1,0 +1,141 @@
+.app-shell {
+  display: grid;
+  grid-template-rows: var(--topbar-height) 1fr var(--bottomnav-height);
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg-0);
+  overflow: hidden;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  min-height: 0;
+  transition: grid-template-columns var(--dur-mid) var(--ease);
+}
+
+/* The sidebar (LeftControlPanel) is conditionally unmounted entirely (not
+   just visually hidden) when there is no active case or when collapsed to
+   hidden mode. Grid auto-placement would otherwise slot the remaining
+   .main-workspace child into column 1, collapsing it to the sidebar's
+   track width. Pin both tracks explicitly so main-workspace always gets
+   the flexible second column regardless of whether the sidebar renders. */
+.workspace > .main-workspace {
+  grid-column: 2;
+}
+
+.workspace > nav,
+.workspace > button {
+  grid-column: 1;
+}
+
+.workspace[data-sidebar='compact'] {
+  grid-template-columns: var(--sidebar-compact) minmax(0, 1fr);
+}
+
+.workspace[data-sidebar='hidden'] {
+  grid-template-columns: var(--sidebar-hidden) minmax(0, 1fr);
+}
+
+.workspace-with-right {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--right-panel-width);
+  min-height: 0;
+  height: 100%;
+}
+
+.workspace-with-right[data-right='closed'] {
+  grid-template-columns: minmax(0, 1fr) 0px;
+}
+
+.main-workspace {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg-1);
+  position: relative;
+}
+
+.main-workspace.no-scroll {
+  overflow: hidden;
+}
+
+.scroll-region {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.page-container {
+  padding: var(--space-4);
+  max-width: 1600px;
+}
+
+.page-container.full-bleed {
+  padding: 0;
+  max-width: none;
+  height: 100%;
+}
+
+.split-3 {
+  display: grid;
+  grid-template-columns: 260px minmax(0,1fr) 320px;
+  gap: 1px;
+  background: var(--border);
+  height: 100%;
+}
+
+.split-3 > * {
+  background: var(--bg-1);
+  min-width: 0;
+  overflow: auto;
+}
+
+/* Master-detail split: master list on the left, detail panel on the right.
+   Both tracks are `minmax(floor, flexFr)` rather than a fixed pixel width —
+   the master list gets real room to show a data-heavy table (names,
+   charges, evidence titles) without every column collapsing into
+   word-per-line wrapping, while the detail panel still gets the larger
+   share of the workspace. The floors keep both panels usable at once; if
+   the workspace is ever narrower than both floors combined, the browser's
+   own grid sizing shrinks the flexible parts before ever violating a
+   floor, so this never pushes a panel off-screen. */
+.split-2 {
+  display: grid;
+  grid-template-columns: minmax(400px, 1.1fr) minmax(460px, 1.2fr);
+  gap: 1px;
+  background: var(--border);
+  height: 100%;
+}
+
+.split-2 > * {
+  background: var(--bg-1);
+  min-width: 0;
+  overflow: auto;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.gap-1 { gap: var(--space-1); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.gap-4 { gap: var(--space-4); }
+
+.grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-3);
+}
+
+@media (max-width: 1024px) {
+  .split-3 { grid-template-columns: 220px minmax(0,1fr) 0px; }
+}
