@@ -12,15 +12,15 @@ import type { LocationStats } from '../locations/locationMeta';
 
 function deriveRegionLabel(locations: LocationEntity[]): string {
   const cities = locations.map((l) => l.metadata.city).filter((c): c is string => !!c);
-  if (cities.length === 0) return 'MOCK MAP PROVIDER — REGION UNKNOWN';
+  if (cities.length === 0) return 'MAPTILER — REGION UNKNOWN';
   const counts = new Map<string, number>();
   for (const c of cities) counts.set(c, (counts.get(c) ?? 0) + 1);
   const distinct = [...counts.keys()];
   if (distinct.length === 1) {
-    return `MOCK MAP PROVIDER — ${distinct[0].toUpperCase()} METROPOLITAN REGION`;
+    return `MAPTILER — ${distinct[0].toUpperCase()} METROPOLITAN REGION`;
   }
   const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c]) => c.toUpperCase());
-  return `MOCK MAP PROVIDER — ${top.join(' / ')}`;
+  return `MAPTILER — ${top.join(' / ')}`;
 }
 
 /**
@@ -30,17 +30,18 @@ function deriveRegionLabel(locations: LocationEntity[]): string {
  * exactly what's being clustered/rendered here.
  */
 function MapCanvasInner({
-  locations, movements, activeLocationId, onSelectLocation, riskByLocationId, focused, onClusterClick,
+  locations, movements, activeLocationId, onSelectLocation, riskByLocationId, statsByLocationId, focused, onClusterClick,
 }: {
   locations: LocationEntity[];
   movements: Movement[];
   activeLocationId: string | null;
   onSelectLocation: (id: string) => void;
   riskByLocationId: Map<string, LocationStats['computedRisk']>;
+  statsByLocationId: Map<string, LocationStats>;
   focused: boolean;
   onClusterClick: (cluster: MapCluster) => void;
 }) {
-  const { project } = useMapProvider();
+  const { project, zoom, zoomIn, zoomOut, reset } = useMapProvider();
 
   const groups = useMemo(() => {
     const points = locations.map((l) => ({ location: l, ...project(l.metadata.coordinates.lat, l.metadata.coordinates.lng) }));
@@ -88,22 +89,47 @@ function MapCanvasInner({
           />
         );
       })}
+      <MapControls zoom={zoom / 10} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={reset} />
+      {activeLocationId && (() => {
+        const active = locations.find((location) => location.id === activeLocationId);
+        const stats = active ? statsByLocationId.get(active.id) : undefined;
+        if (!active || !stats) return null;
+        return (
+          <div className="map-location-popup" role="dialog" aria-label={`${active.name} details`}>
+            <div className="map-location-popup-header">
+              <div>
+                <span className="system-label">{active.metadata.category?.toUpperCase() ?? 'LOCATION'}</span>
+                <strong>{active.name}</strong>
+                <span className="text-muted">{active.metadata.city}</span>
+              </div>
+              <button type="button" aria-label="Close location details" onClick={() => onSelectLocation('')}>&times;</button>
+            </div>
+            <span className="text-secondary">{active.metadata.address}</span>
+            <div className="row gap-2">
+              <span className="badge badge-info">{stats.eventCount} EVENTS</span>
+              <span className="badge badge-warning">{stats.computedRisk.toUpperCase()} RISK</span>
+            </div>
+            <span className="text-muted mono" style={{ fontSize: 10 }}>{active.metadata.coordinates.lat.toFixed(4)}, {active.metadata.coordinates.lng.toFixed(4)}</span>
+          </div>
+        );
+      })()}
     </>
   );
 }
 
 export function MockIndiaMap({
-  locations, movements = [], activeLocationId, onSelectLocation, riskByLocationId,
+  locations, movements = [], activeLocationId, onSelectLocation, riskByLocationId, statsByLocationId,
 }: {
   locations: LocationEntity[];
   movements?: Movement[];
   activeLocationId: string | null;
   onSelectLocation: (id: string) => void;
   riskByLocationId?: Map<string, LocationStats['computedRisk']>;
+  statsByLocationId?: Map<string, LocationStats>;
 }) {
-  const [zoom, setZoom] = useState(1);
   const [focusCity, setFocusCity] = useState<string | null>(null);
   const risk = riskByLocationId ?? new Map();
+  const stats = statsByLocationId ?? new Map();
 
   // A new location set (case switch, search, or filter change) means the
   // previous cluster-zoom no longer applies to what's on screen.
@@ -161,29 +187,21 @@ export function MockIndiaMap({
       </div>
 
       <div style={{ position: 'relative', flex: 1, minHeight: 0, width: '100%', overflow: 'hidden', background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
-        <div
-          style={{
-            position: 'absolute', inset: 0, transform: `scale(${zoom})`, transformOrigin: 'center', transition: 'transform 200ms var(--ease)',
-            backgroundImage: 'linear-gradient(rgba(72,216,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(72,216,255,0.06) 1px, transparent 1px)',
-            backgroundSize: '32px 32px',
-          }}
-        >
-          <MapProvider locations={displayLocations}>
-            <MapCanvasInner
-              locations={displayLocations}
-              movements={movements}
-              activeLocationId={activeLocationId}
-              onSelectLocation={onSelectLocation}
-              riskByLocationId={risk}
-              focused={!!focusCity}
-              onClusterClick={handleClusterClick}
-            />
-          </MapProvider>
-        </div>
+        <MapProvider locations={displayLocations}>
+          <MapCanvasInner
+            locations={displayLocations}
+            movements={movements}
+            activeLocationId={activeLocationId}
+            onSelectLocation={onSelectLocation}
+            riskByLocationId={risk}
+            statsByLocationId={stats}
+            focused={!!focusCity}
+            onClusterClick={handleClusterClick}
+          />
+        </MapProvider>
         <div className="mono text-muted" style={{ position: 'absolute', bottom: 8, left: 10, fontSize: 9.5 }}>
           {regionLabel}
         </div>
-        <MapControls zoom={zoom} onZoomIn={() => setZoom((z) => Math.min(z + 0.2, 2.2))} onZoomOut={() => setZoom((z) => Math.max(z - 0.2, 0.6))} onReset={() => setZoom(1)} />
       </div>
     </div>
   );

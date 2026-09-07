@@ -1,51 +1,28 @@
 import { create } from 'zustand';
 import type { AnalystUser } from '../types';
 import { authService } from '../services/authService';
-import { loadJSON, saveJSON, removeKey, loadSessionJSON, saveSessionJSON, removeSessionKey } from '../utils/localStorage';
 
 interface SessionState {
   user: AnalystUser | null;
   isAuthenticated: boolean;
   authError: string | null;
   isAuthenticating: boolean;
-  /** `remember` controls whether the demo session survives closing the tab
-   *  (persisted to localStorage) or lives only for this browser session
-   *  (sessionStorage) — wired to the login screen's "keep me signed in". */
-  login: (username: string, password: string, remember?: boolean) => Promise<boolean>;
-  logout: () => void;
-  restoreSession: () => void;
+  login: (email: string, password: string) => Promise<boolean>;
+  signup: (displayName: string, email: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+  restoreSession: () => Promise<void>;
 }
-
-function readInitial(): { user: AnalystUser | null; authed: boolean } {
-  const persistedUser = loadJSON<AnalystUser | null>('session.demoUser', null);
-  const persistedAuthed = loadJSON<boolean>('session.authenticated', false);
-  if (persistedAuthed && persistedUser) return { user: persistedUser, authed: true };
-  const sessionUser = loadSessionJSON<AnalystUser | null>('session.demoUser', null);
-  const sessionAuthed = loadSessionJSON<boolean>('session.authenticated', false);
-  return { user: sessionUser, authed: sessionAuthed };
-}
-
-const initial = readInitial();
 
 export const useSessionStore = create<SessionState>((set) => ({
-  user: initial.user,
-  isAuthenticated: initial.authed,
+  user: null,
+  isAuthenticated: false,
   authError: null,
   isAuthenticating: false,
 
-  login: async (username, password, remember = true) => {
+  login: async (email, password) => {
     set({ isAuthenticating: true, authError: null });
-    const result = await authService.login(username, password);
+    const result = await authService.login(email, password);
     if (result.success && result.user) {
-      // Always clear both storages first so switching "remember" state
-      // between logins never leaves a stale copy behind.
-      removeKey('session.demoUser');
-      removeKey('session.authenticated');
-      removeSessionKey('session.demoUser');
-      removeSessionKey('session.authenticated');
-      const save = remember ? saveJSON : saveSessionJSON;
-      save('session.demoUser', result.user);
-      save('session.authenticated', true);
       set({ user: result.user, isAuthenticated: true, isAuthenticating: false, authError: null });
       return true;
     }
@@ -53,16 +30,24 @@ export const useSessionStore = create<SessionState>((set) => ({
     return false;
   },
 
-  logout: () => {
-    removeKey('session.demoUser');
-    removeKey('session.authenticated');
-    removeSessionKey('session.demoUser');
-    removeSessionKey('session.authenticated');
+  signup: async (displayName, email, password) => {
+    set({ isAuthenticating: true, authError: null });
+    const result = await authService.signup(displayName, email, password);
+    if (result.success && result.user) {
+      set({ user: result.user, isAuthenticated: true, isAuthenticating: false, authError: null });
+      return true;
+    }
+    set({ isAuthenticating: false, authError: result.error ?? 'Unable to create account.' });
+    return false;
+  },
+
+  logout: async () => {
+    await authService.logout();
     set({ user: null, isAuthenticated: false });
   },
 
-  restoreSession: () => {
-    const { user, authed } = readInitial();
-    set({ user, isAuthenticated: authed });
+  restoreSession: async () => {
+    const user = await authService.getCurrentUser();
+    set({ user, isAuthenticated: !!user });
   },
 }));

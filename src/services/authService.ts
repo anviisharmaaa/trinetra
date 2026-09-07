@@ -1,6 +1,5 @@
-import { mockCurrentUser } from '../data';
 import type { AnalystUser } from '../types';
-import { mockDelay } from '../utils/mockDelay';
+import { supabase } from '../utils/supabase/client';
 
 export interface AuthResult {
   success: boolean;
@@ -8,20 +7,44 @@ export interface AuthResult {
   error?: string;
 }
 
-// Mock/demo authentication only. Clearly labelled — never presented as real security.
+function toAnalystUser(user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> }): AnalystUser {
+  const displayName = typeof user.user_metadata?.display_name === 'string'
+    ? user.user_metadata.display_name
+    : user.email?.split('@')[0] ?? 'Analyst';
+  const initials = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'AN';
+  return {
+    id: user.id,
+    username: user.email ?? '',
+    displayName,
+    designation: 'Investigating Officer',
+    unit: 'Special Intelligence Unit — Mumbai Zone',
+    clearanceLevel: 'L3',
+    avatarInitials: initials,
+    lastLogin: new Date().toISOString(),
+  };
+}
+
 export const authService = {
-  async login(username: string, password: string): Promise<AuthResult> {
-    await mockDelay(900);
-    if (username.trim().toLowerCase() === 'demo' && password === 'demo') {
-      return { success: true, user: mockCurrentUser };
-    }
-    return { success: false, error: 'INVALID CREDENTIALS. This is a demo environment — use demo / demo.' };
+  async login(email: string, password: string): Promise<AuthResult> {
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error || !data.user) return { success: false, error: error?.message ?? 'Unable to sign in.' };
+    return { success: true, user: toAnalystUser(data.user) };
+  },
+  async signup(displayName: string, email: string, password: string): Promise<AuthResult> {
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { data: { display_name: displayName.trim() } },
+    });
+    if (error || !data.user) return { success: false, error: error?.message ?? 'Unable to create account.' };
+    if (!data.session) return { success: false, error: 'Account created. Check your email to confirm your account before signing in.' };
+    return { success: true, user: toAnalystUser(data.user) };
   },
   async logout(): Promise<void> {
-    await mockDelay(200);
+    await supabase.auth.signOut();
   },
-  async getCurrentUser(): Promise<AnalystUser> {
-    await mockDelay(150);
-    return mockCurrentUser;
+  async getCurrentUser(): Promise<AnalystUser | null> {
+    const { data } = await supabase.auth.getUser();
+    return data.user ? toAnalystUser(data.user) : null;
   },
 };

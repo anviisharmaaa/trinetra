@@ -1,3 +1,95 @@
+.map-provider-shell {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg-2);
+}
+
+.maptiler-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.map-provider-shell > .maptiler-canvas.maplibregl-map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.map-overlay-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.map-overlay-layer > * {
+  pointer-events: auto;
+}
+
+.map-overlay-layer > svg {
+  pointer-events: none;
+}
+
+.maptiler-canvas .maplibregl-canvas {
+  cursor: grab;
+}
+
+.maptiler-canvas .maplibregl-canvas:active {
+  cursor: grabbing;
+}
+
+.maplibregl-ctrl-attrib {
+  font-size: 9px;
+}
+
+.map-location-popup {
+  position: absolute;
+  top: 58px;
+  left: 12px;
+  z-index: 8;
+  display: grid;
+  gap: 8px;
+  width: min(280px, calc(100% - 24px));
+  padding: 12px;
+  background: rgba(5, 14, 23, 0.96);
+  border: 1px solid var(--cyan-dim);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.map-provider-shell .map-controls {
+  z-index: 12;
+}
+
+.map-location-popup-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.map-location-popup-header > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.map-location-popup-header strong {
+  font-size: 14px;
+}
+
+.map-location-popup-header button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
 /* ---------- Panel ---------- */
 .panel {
   background: var(--panel);

@@ -18,6 +18,13 @@ Then open the printed local URL and log in with the demo credentials:
 - **Username:** `demo`
 - **Password:** `demo`
 
+The Locations module uses a MapTiler basemap, and the app includes a browser-side
+Supabase client for data/auth integration. Create a `.env.local` file with
+`VITE_MAPTILER_KEY`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_PUBLISHABLE_KEY`
+before running the app. Vite apps do not support Next.js server helpers or
+middleware; session refresh should be handled through Supabase's browser client
+auth events or a backend service when authentication is added.
+
 To produce a production build:
 
 ```bash
@@ -49,10 +56,8 @@ npm run preview
   Every service call goes through `mockDelay()` so nothing resolves instantly — this mirrors a
   real analytical backend having latency. Swapping in a real API later means rewriting the
   repository/service internals only; UI code never talks to `src/data` directly.
-- **MapProvider** (`src/components/map/MapProvider.tsx`) exposes a `project(lat, lng) → {x, y}`
-  contract currently backed by `MockIndiaMap` (a percentage-based projection scoped to the
-  locations actually being displayed). A future `GoogleMapProvider` can implement the same
-  contract without touching any consuming component.
+- **MapProvider** (`src/components/map/MapProvider.tsx`) owns the MapLibre/MapTiler basemap and
+  exposes a `project(lat, lng) → {x, y}` contract for the existing investigation overlays.
 - **Graph adapter boundary**: nothing outside `src/components/graph/graphAdapter.ts` and
   `NetworkGraph.tsx` imports Cytoscape directly, so the graph library could be swapped later.
 

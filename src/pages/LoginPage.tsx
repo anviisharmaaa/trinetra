@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Lock, User, ShieldAlert, ArrowRight, CreditCard } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, User, ShieldAlert, ArrowRight, CreditCard } from 'lucide-react';
 import { TrinetraGlobe } from '../components/auth/TrinetraGlobe';
 import { useSessionStore } from '../store/sessionStore';
 import { useSystemTime } from '../hooks/useSystemTime';
@@ -11,13 +11,15 @@ type Phase = 'idle' | 'authenticating' | 'granted';
 export function LoginPage() {
   const navigate = useNavigate();
   const login = useSessionStore((s) => s.login);
+  const signup = useSessionStore((s) => s.signup);
   const authError = useSessionStore((s) => s.authError);
   const now = useSystemTime();
 
   const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(true);
   const [phase, setPhase] = useState<Phase>('idle');
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -31,7 +33,9 @@ export function LoginPage() {
     e.preventDefault();
     if (phase !== 'idle') return;
     setPhase('authenticating');
-    const ok = await login(username, password, remember);
+    const ok = mode === 'login'
+      ? await login(username, password)
+      : await signup(displayName, username, password);
     if (ok) {
       setPhase('granted');
       setTimeout(() => navigate('/cases'), 620);
@@ -82,8 +86,10 @@ export function LoginPage() {
               <div className="auth-card-subtitle">INTELLIGENCE PLATFORM</div>
             </div>
 
-            <h2 className="auth-welcome">Welcome back</h2>
-            <p className="auth-welcome-sub">Sign in to continue to Trinetra</p>
+            <h2 className="auth-welcome">{mode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
+            <p className="auth-welcome-sub">
+              {mode === 'login' ? 'Sign in to continue to Trinetra' : 'Create a secure analyst account'}
+            </p>
 
             {authError && (
               <div className="auth-error">
@@ -93,16 +99,33 @@ export function LoginPage() {
             )}
 
             <div className="auth-field">
-              <label htmlFor="auth-username">Username</label>
+              {mode === 'signup' && (
+                <div className="auth-field">
+                  <label htmlFor="auth-display-name">Full name</label>
+                  <div className="auth-input-wrap">
+                    <User size={15} />
+                    <input
+                      id="auth-display-name"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="Ananya Deshmukh"
+                      autoComplete="name"
+                      autoFocus
+                      disabled={phase !== 'idle'}
+                    />
+                  </div>
+                </div>
+              )}
+              <label htmlFor="auth-username">Email address</label>
               <div className="auth-input-wrap">
-                <User size={15} />
+                <Mail size={15} />
                 <input
                   id="auth-username"
+                  type="email"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="analyst.username"
-                  autoComplete="username"
-                  autoFocus
+                  placeholder="analyst@example.com"
+                  autoComplete="email"
                   disabled={phase !== 'idle'}
                 />
               </div>
@@ -118,7 +141,7 @@ export function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;"
-                  autoComplete="current-password"
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                   disabled={phase !== 'idle'}
                 />
                 <button
@@ -132,19 +155,18 @@ export function LoginPage() {
               </div>
             </div>
 
-            <div className="auth-row-between">
-              <label className="auth-checkbox">
-                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-                Keep me signed in
-              </label>
-              <button
-                type="button"
-                className="auth-link-muted"
-                onClick={() => setNotice('Password reset is not available in this demo environment.')}
-              >
-                Forgot password?
-              </button>
-            </div>
+            {mode === 'login' && (
+              <div className="auth-row-between">
+                <span className="auth-link-muted">Session secured by Supabase</span>
+                <button
+                  type="button"
+                  className="auth-link-muted"
+                  onClick={() => setNotice('Password reset is not available yet.')}
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
 
             <button
               type="submit"
@@ -157,7 +179,7 @@ export function LoginPage() {
             >
               {phase === 'idle' && (
                 <>
-                  Sign in <ArrowRight size={15} />
+                  {mode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight size={15} />
                 </>
               )}
               {phase === 'authenticating' && (
@@ -168,22 +190,36 @@ export function LoginPage() {
               {phase === 'granted' && 'Access granted'}
             </button>
 
-            <div className="auth-divider-row">
+            {mode === 'login' && <div className="auth-divider-row">
               <span>or</span>
+            </div>}
+
+            {mode === 'login' && (
+              <button
+                type="button"
+                className="auth-btn-secondary"
+                onClick={() => setNotice('Smart card authentication is not available.')}
+              >
+                <CreditCard size={15} />
+                Sign in with Smart Card
+              </button>
+            )}
+
+            <div className="auth-demo-hint">
+              {mode === 'login' ? 'Use your Supabase account credentials.' : 'Email confirmation may be required.'}
             </div>
 
             <button
               type="button"
-              className="auth-btn-secondary"
-              onClick={() => setNotice('Smart card authentication is not available in this demo environment.')}
+              className="auth-link-muted"
+              onClick={() => {
+                setMode((current) => current === 'login' ? 'signup' : 'login');
+                setNotice(null);
+              }}
+              disabled={phase !== 'idle'}
             >
-              <CreditCard size={15} />
-              Sign in with Smart Card
+              {mode === 'login' ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
             </button>
-
-            <div className="auth-demo-hint">
-              Demo access &mdash; <b>demo</b> / <b>demo</b>
-            </div>
 
             <div className="auth-card-footer">
               <button type="button" onClick={() => setNotice('Security notices are not available in this demo environment.')}>

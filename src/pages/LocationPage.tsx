@@ -173,6 +173,7 @@ export function LocationPage() {
               activeLocationId={selectedLocationId}
               onSelectLocation={selectLocation}
               riskByLocationId={riskByLocationId}
+              statsByLocationId={statsById}
             />
           </div>
 
