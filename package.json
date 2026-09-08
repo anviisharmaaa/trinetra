@@ -10,8 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@maptiler/sdk": "^4.1.0",
     "@supabase/ssr": "^0.12.6",
-    "@supabase/supabase-js": "^2.115.0",
+    "@supabase/supabase-js": "^2.116.0",
     "cytoscape": "^3.34.2",
     "lucide-react": "^1.41.0",
     "maplibre-gl": "^6.7.0",

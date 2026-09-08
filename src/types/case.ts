@@ -33,4 +33,14 @@ export interface Case {
     alertCount: number;
     evidenceCount: number;
   };
+
+  // ---- Linked case entities (Person ID is the authoritative identifier —
+  // never the name). Optional so cases created before this field existed
+  // keep working unchanged; every read site treats a missing array as empty. ----
+  /** Person ID(s) of the victim(s) associated with this case. */
+  victimPersonIds?: string[];
+  /** Person ID(s) of the suspect(s) associated with this case. */
+  suspectPersonIds?: string[];
+  /** ID(s) of other related people/entities (any EntityType) associated with this case. */
+  relatedEntityIds?: string[];
 }

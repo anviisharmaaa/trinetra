@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal } from '../ui/Modal';
+import { EntityPicker } from './EntityPicker';
 import { useCaseStore } from '../../store/caseStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { useUIStore } from '../../store/uiStore';
@@ -17,11 +18,17 @@ export function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<CasePriority>('medium');
+  const [victimIds, setVictimIds] = useState<string[]>([]);
+  const [suspectIds, setSuspectIds] = useState<string[]>([]);
+  const [relatedIds, setRelatedIds] = useState<string[]>([]);
 
   function reset() {
     setName('');
     setDescription('');
     setPriority('medium');
+    setVictimIds([]);
+    setSuspectIds([]);
+    setRelatedIds([]);
   }
 
   function handleClose() {
@@ -37,6 +44,9 @@ export function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => 
       description: description.trim() || 'No description provided yet.',
       priority,
       investigatorLead: user?.displayName ?? 'Unassigned',
+      victimPersonIds: victimIds,
+      suspectPersonIds: suspectIds,
+      relatedEntityIds: relatedIds,
     });
     pushToast(`${created.code} created.`, 'success');
     reset();
@@ -46,7 +56,7 @@ export function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => 
 
   return (
     <Modal open={open} onClose={handleClose} title="NEW CASE">
-      <form className="stack gap-3" style={{ width: 420, maxWidth: '100%' }} onSubmit={handleSubmit}>
+      <form className="stack gap-3" style={{ width: 480, maxWidth: '100%' }} onSubmit={handleSubmit}>
         <div className="field">
           <label htmlFor="new-case-name">Case name</label>
           <input
@@ -86,6 +96,45 @@ export function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => 
             ))}
           </div>
         </div>
+        <div className="case-entities-section">
+          <div className="system-label" style={{ marginBottom: 8 }}>Case Entities</div>
+
+          <div className="field">
+            <label>Victim</label>
+            <EntityPicker
+              selectedIds={victimIds}
+              onChange={setVictimIds}
+              types={['person']}
+              multiple={false}
+              addLabel="Add Victim"
+              placeholder="Search victim by name or Person ID…"
+            />
+          </div>
+
+          <div className="field">
+            <label>Suspects</label>
+            <EntityPicker
+              selectedIds={suspectIds}
+              onChange={setSuspectIds}
+              types={['person']}
+              multiple
+              addLabel="Add Suspect"
+              placeholder="Search suspect by name or Person ID…"
+            />
+          </div>
+
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label>Other Related People / Entities</label>
+            <EntityPicker
+              selectedIds={relatedIds}
+              onChange={setRelatedIds}
+              multiple
+              addLabel="Add Entity"
+              placeholder="Search by name or ID…"
+            />
+          </div>
+        </div>
+
         <div className="row gap-2" style={{ justifyContent: 'flex-end', marginTop: 6 }}>
           <button type="button" className="btn btn-ghost" onClick={handleClose}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={!name.trim()}>Create Case</button>

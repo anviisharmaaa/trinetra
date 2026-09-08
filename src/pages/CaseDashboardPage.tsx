@@ -7,9 +7,10 @@ import { timelineService } from '../services/timelineService';
 import { evidenceService } from '../services/evidenceService';
 import { LoadingState } from '../components/ui/LoadingState';
 import { Panel } from '../components/ui/Panel';
-import { riskBadgeClass } from '../utils/entityMeta';
+import { ENTITY_LABELS, riskBadgeClass } from '../utils/entityMeta';
 import { formatRelativeTime } from '../utils/formatters';
 import { computeCaseRisk } from '../utils/riskAssessment';
+import { getEntityById } from '../data';
 import type { Entity, PersonEntity, TimelineEvent, Evidence } from '../types';
 import { useInvestigationStore } from '../store/investigationStore';
 import { PersonAvatar } from '../components/ui/EntityImage';
@@ -52,6 +53,22 @@ export function CaseDashboardPage() {
   const risk = computeCaseRisk(activeCase);
   const DeltaIcon = risk.delta >= 0 ? TrendingUp : TrendingDown;
 
+  // Linked-entity ids on the case are optional (older cases predate this
+  // field), so a missing array simply resolves to nothing — never an error.
+  // Resolution always goes through the existing entity dataset by ID; the
+  // case itself stores no person data of its own.
+  const victims = (activeCase.victimPersonIds ?? []).map(getEntityById).filter((e): e is PersonEntity => !!e && e.type === 'person');
+  const suspects = (activeCase.suspectPersonIds ?? []).map(getEntityById).filter((e): e is PersonEntity => !!e && e.type === 'person');
+  const relatedEntities = (activeCase.relatedEntityIds ?? []).map(getEntityById).filter((e): e is Entity => !!e);
+  const hasCaseEntities = victims.length > 0 || suspects.length > 0 || relatedEntities.length > 0;
+
+  function openEntity(entity: Entity) {
+    selectEntity(entity.id);
+    if (entity.type === 'person') navigate(`/cases/${caseId}/person/${entity.id}`);
+    else if (entity.type === 'location') navigate(`/cases/${caseId}/location`);
+    else navigate(`/cases/${caseId}/network`);
+  }
+
   return (
     <div className="scroll-region page-container" style={{ height: '100%' }}>
       <div className="row gap-3" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
@@ -78,6 +95,16 @@ export function CaseDashboardPage() {
         <LoadingState label="BUILDING CASE OVERVIEW" />
       ) : (
         <>
+          {hasCaseEntities && (
+            <Panel title="CASE ENTITIES" className="fade-in" style={{ marginBottom: 16 } as CSSProperties}>
+              <div className="case-entities-panel-group">
+                <CaseEntityGroup label="VICTIMS" entities={victims} onOpen={openEntity} emptyLabel="No victim linked." />
+                <CaseEntityGroup label="SUSPECTS" entities={suspects} onOpen={openEntity} emptyLabel="No suspects linked." />
+                <CaseEntityGroup label="RELATED ENTITIES" entities={relatedEntities} onOpen={openEntity} emptyLabel="No related entities linked." />
+              </div>
+            </Panel>
+          )}
+
           <div className="row gap-3" style={{ alignItems: 'flex-start' }}>
             <Panel title="KEY PEOPLE" className="fade-in" style={{ flex: 1, minWidth: 280 } as CSSProperties}>
               <div className="stack gap-2">
@@ -157,6 +184,37 @@ export function CaseDashboardPage() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function CaseEntityGroup({
+  label, entities, onOpen, emptyLabel,
+}: {
+  label: string; entities: Entity[]; onOpen: (entity: Entity) => void; emptyLabel: string;
+}) {
+  return (
+    <div className="stack gap-1">
+      <span className="system-label">{label} ({entities.length})</span>
+      {entities.length === 0 && <span className="text-muted" style={{ fontSize: 12 }}>{emptyLabel}</span>}
+      {entities.map((e) => (
+        <button key={e.id} type="button" className="case-entity-row" onClick={() => onOpen(e)}>
+          <PersonAvatar
+            personId={e.id}
+            name={e.name}
+            src={e.type === 'person' ? personImage(e.id, e.name) : undefined}
+            size={26}
+            square={e.type !== 'person'}
+          />
+          <div className="stack" style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+            <span className="text-muted mono" style={{ fontSize: 10 }}>{e.id}</span>
+          </div>
+          <span className={e.type === 'person' ? riskBadgeClass(e.riskLevel) : 'badge badge-neutral'} style={{ fontSize: 9.5 }}>
+            {e.type === 'person' ? (e.riskLevel ?? 'unknown') : ENTITY_LABELS[e.type]}
+          </span>
+        </button>
+      ))}
     </div>
   );
 }

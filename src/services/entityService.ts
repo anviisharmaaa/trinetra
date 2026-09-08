@@ -13,13 +13,14 @@ export const entityService = {
     const list = getEntitiesByCase(caseId);
     return types?.length ? list.filter((e) => types.includes(e.type)) : list;
   },
-  async search(query: string, caseId?: string): Promise<Entity[]> {
+  async search(query: string, caseId?: string, types?: EntityType[]): Promise<Entity[]> {
     await mockDelay(500);
     const q = query.toLowerCase().trim();
     return allEntities.filter((e) => {
       const matchesCase = !caseId || e.caseIds.includes(caseId);
+      const matchesType = !types?.length || types.includes(e.type);
       const matchesQuery = !q || e.name.toLowerCase().includes(q) || e.id.toLowerCase().includes(q);
-      return matchesCase && matchesQuery;
+      return matchesCase && matchesType && matchesQuery;
     });
   },
   async getRelatedEntities(entityId: string): Promise<{ entity: Entity; relationship: Relationship }[]> {

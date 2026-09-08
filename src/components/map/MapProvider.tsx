@@ -70,7 +70,7 @@ export function MapProvider({ children, locations }: { children: ReactNode; loca
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
-    const key = import.meta.env.VITE_MAPTILER_KEY;
+    const key = import.meta.env.VITE_MAPTILER_API_KEY;
     if (!key) return;
     const instance = new maplibregl.Map({
       container: mapContainer.current,
@@ -120,7 +120,10 @@ export function MapProvider({ children, locations }: { children: ReactNode; loca
     instance.on('load', refresh);
     instance.on('move', refresh);
     instance.on('resize', refresh);
-    const resizeObserver = new ResizeObserver(() => instance.resize());
+    const resizeObserver = new ResizeObserver(() => {
+      instance.resize();
+      refresh();
+    });
     resizeObserver.observe(mapContainer.current);
     mapRef.current = instance;
     setMap(instance);
