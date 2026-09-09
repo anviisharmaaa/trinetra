@@ -1,15 +1,33 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowRight, Building2, Clock, FolderLock, MapPin, User } from 'lucide-react';
-import type { Entity, Evidence, Relationship, TimelineEvent } from '../../types';
+import type { Entity, EntityType, Evidence, EvidenceType, Relationship, TimelineEvent } from '../../types';
 import { entityService } from '../../services/entityService';
 import { timelineService } from '../../services/timelineService';
 import { evidenceService } from '../../services/evidenceService';
+import { personService, type PersonRecordRow } from '../../services/personService';
 import { riskBadgeClass, ENTITY_LABELS } from '../../utils/entityMeta';
 import { PersonAvatar, LocationThumb } from '../ui/EntityImage';
 import { personImage, locationImage } from '../../config/imageAssets';
 import { formatRelativeTime } from '../../utils/formatters';
 import { LoadingState } from '../ui/LoadingState';
+
+function evidenceFromRow(row: PersonRecordRow, personId: string): Evidence {
+  return {
+    id: String(row.evidence_id ?? ''),
+    caseId: String(row.case_id ?? ''),
+    type: (String(row.evidence_type ?? 'forensic').toLowerCase() as EvidenceType),
+    title: String(row.evidence_type ?? 'Evidence'),
+    description: String(row.description ?? ''),
+    collectedAt: String(row.collection_date ?? ''),
+    collectedBy: '',
+    entityIds: [personId],
+    sourceRef: String(row.source_record_id ?? ''),
+    confidence: typeof row.confidence === 'number' ? row.confidence : undefined,
+    chainOfCustody: [],
+    tags: [],
+  };
+}
 
 /**
  * The persistent right-hand panel for Network Analysis. Always reflects
@@ -24,10 +42,42 @@ export function EntityDetails({ entity, onSelectEntity }: { entity: Entity; onSe
   const [activity, setActivity] = useState<TimelineEvent[] | null>(null);
   const [evidence, setEvidence] = useState<Evidence[] | null>(null);
 
+  // A real Master Dataset person (sourceIds includes 'master-dataset' — see
+  // personService/graphService) has no presence in the small mock dataset
+  // that entityService/timelineService/evidenceService read from, so this
+  // panel pulls its connections/activity/evidence live from Express instead.
+  // Everything else (demo entities, non-person types) keeps using the
+  // existing mock services exactly as before.
+  const isLivePerson = entity.type === 'person' && entity.sourceIds?.includes('master-dataset');
+
   useEffect(() => {
     setRelated(null);
     setActivity(null);
     setEvidence(null);
+
+    if (isLivePerson) {
+      const now = new Date().toISOString();
+      personService.getRelationships(entity.id).then((rels) => {
+        setRelated(rels.map((r) => ({
+          entity: {
+            id: r.entity.id, caseIds: [], type: 'person' as EntityType, name: r.entity.name,
+            status: 'active', metadata: {}, sourceIds: ['master-dataset'], createdAt: now, updatedAt: now,
+          } as Entity,
+          relationship: {
+            id: `${entity.id}-${r.entity.id}`, caseId: caseId ?? '', sourceId: entity.id, targetId: r.entity.id,
+            type: 'associated', label: r.relationship.label, strength: 0.6, metadata: {}, sourceIds: ['master-dataset'], createdAt: now,
+          } as Relationship,
+        })));
+      }).catch(() => setRelated([]));
+      personService.getTimeline(entity.id).then((evs) => {
+        setActivity([...evs].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 4));
+      }).catch(() => setActivity([]));
+      personService.getRecords(entity.id, 'evidence').then((rows) => {
+        setEvidence(rows.slice(0, 4).map((r) => evidenceFromRow(r, entity.id)));
+      }).catch(() => setEvidence([]));
+      return;
+    }
+
     entityService.getRelatedEntities(entity.id).then(setRelated);
     if (caseId) {
       timelineService.listByCase(caseId, { entityId: entity.id }).then((evs) => {
@@ -37,7 +87,7 @@ export function EntityDetails({ entity, onSelectEntity }: { entity: Entity; onSe
         setEvidence(all.filter((e) => e.entityIds.includes(entity.id)).slice(0, 4));
       });
     }
-  }, [entity.id, caseId]);
+  }, [entity.id, entity.type, isLivePerson, caseId]);
 
   const risk = (entity as { riskLevel?: string }).riskLevel;
   const grouped = related?.reduce<Record<string, number>>((acc, r) => {

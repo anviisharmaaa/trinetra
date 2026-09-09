@@ -43,4 +43,17 @@ export interface Case {
   suspectPersonIds?: string[];
   /** ID(s) of other related people/entities (any EntityType) associated with this case. */
   relatedEntityIds?: string[];
+
+  // ---- LED case fields (Postgres `cases`, via caseNarrativeService --
+  // never Supabase). Optional so every existing Supabase/mock Case literal
+  // (mockCases.ts, caseService.hydrateCase) remains valid unchanged. ----
+  /** True only for a case hydrated from the self-hosted Postgres `cases`
+   * table (see caseService.getLedCase) -- never set for a Supabase
+   * analyst case or a legacy demo case. CaseDashboardPage branches on this
+   * to render LedCaseOverview instead of the Supabase-oriented overview. */
+  isLedCase?: boolean;
+  /** The LED case's human case_number (e.g. "CN-2024-001427"), distinct
+   * from `code` which mirrors it for LED cases but means "OP-001" for
+   * Supabase analyst cases. */
+  ledCaseNumber?: string;
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Plus, Search, X, AlertTriangle } from 'lucide-react';
 import { entityService } from '../../services/entityService';
+import { personService } from '../../services/personService';
 import { PersonAvatar } from '../ui/EntityImage';
 import { personImage } from '../../config/imageAssets';
 import { ENTITY_LABELS, riskBadgeClass } from '../../utils/entityMeta';
@@ -39,11 +40,26 @@ export function EntityPicker({
   const [selectedEntities, setSelectedEntities] = useState<Record<string, Entity>>({});
   const boxRef = useRef<HTMLDivElement>(null);
 
+  // Person-only pickers (Victim / Suspects) search the real backend — the
+  // ingested Master Dataset in PostgreSQL — since Person ID is authoritative
+  // and must be validated against the real records, not the small demo
+  // dataset. "Other Related Entities" (any type) still searches the
+  // existing mock entity set until non-person types are connected too.
+  const isPersonOnly = types?.length === 1 && types[0] === 'person';
+
+  async function resolveOne(id: string): Promise<Entity | undefined> {
+    if (isPersonOnly) {
+      const raw = await personService.getPersonRaw(id);
+      if (raw) return { id: raw.person_id, caseIds: [], type: 'person', name: raw.name, riskLevel: (raw.risk_level ?? 'unknown').toLowerCase() as Entity['riskLevel'], metadata: {}, sourceIds: [], createdAt: '', updatedAt: '' } as Entity;
+    }
+    return entityService.getEntity(id);
+  }
+
   // Resolve display info for already-selected ids (covers ids the parent
   // already had, e.g. when re-opening a draft) purely by ID lookup.
   useEffect(() => {
     let cancelled = false;
-    Promise.all(selectedIds.map((id) => entityService.getEntity(id))).then((found) => {
+    Promise.all(selectedIds.map((id) => resolveOne(id))).then((found) => {
       if (cancelled) return;
       const map: Record<string, Entity> = {};
       found.forEach((e, i) => { if (e) map[selectedIds[i]] = e; });
@@ -63,11 +79,17 @@ export function EntityPicker({
     let cancelled = false;
     setSearching(true);
     const handle = setTimeout(() => {
-      entityService.search(q, undefined, types).then((found) => {
+      const search = isPersonOnly ? personService.search(q, 8) : entityService.search(q, undefined, types);
+      search.then((found) => {
         if (cancelled) return;
         const candidates = found.filter((e) => !selectedIds.includes(e.id));
         setResults(candidates.slice(0, 8));
         setNotFound(candidates.length === 0);
+        setSearching(false);
+      }).catch(() => {
+        if (cancelled) return;
+        setResults([]);
+        setNotFound(true);
         setSearching(false);
       });
     }, 200);

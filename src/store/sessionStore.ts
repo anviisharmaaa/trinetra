@@ -7,6 +7,12 @@ interface SessionState {
   isAuthenticated: boolean;
   authError: string | null;
   isAuthenticating: boolean;
+  /** True until the initial restoreSession() call (fired once on app mount)
+   * has resolved. ProtectedRoute must wait for this before deciding whether
+   * to redirect to /login — otherwise a hard reload always bounces an
+   * already-authenticated user, because isAuthenticated still holds its
+   * initial `false` value at that point. */
+  isRestoringSession: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   signup: (displayName: string, email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -18,6 +24,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   isAuthenticated: false,
   authError: null,
   isAuthenticating: false,
+  isRestoringSession: true,
 
   login: async (email, password) => {
     set({ isAuthenticating: true, authError: null });
@@ -47,7 +54,11 @@ export const useSessionStore = create<SessionState>((set) => ({
   },
 
   restoreSession: async () => {
-    const user = await authService.getCurrentUser();
-    set({ user, isAuthenticated: !!user });
+    try {
+      const user = await authService.getCurrentUser();
+      set({ user, isAuthenticated: !!user });
+    } finally {
+      set({ isRestoringSession: false });
+    }
   },
 }));

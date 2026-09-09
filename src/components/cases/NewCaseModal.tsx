@@ -21,6 +21,7 @@ export function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => 
   const [victimIds, setVictimIds] = useState<string[]>([]);
   const [suspectIds, setSuspectIds] = useState<string[]>([]);
   const [relatedIds, setRelatedIds] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
   function reset() {
     setName('');
@@ -36,22 +37,41 @@ export function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => 
     onClose();
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
-    const created = createCase({
-      name: name.trim(),
-      description: description.trim() || 'No description provided yet.',
-      priority,
-      investigatorLead: user?.displayName ?? 'Unassigned',
-      victimPersonIds: victimIds,
-      suspectPersonIds: suspectIds,
-      relatedEntityIds: relatedIds,
-    });
-    pushToast(`${created.code} created.`, 'success');
-    reset();
-    onClose();
-    navigate(`/cases/${created.id}`);
+    if (!name.trim() || submitting) return;
+
+    if (!user?.id) {
+      pushToast('You must be signed in to create a case.', 'danger');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const created = await createCase({
+        name: name.trim(),
+        description: description.trim() || 'No description provided yet.',
+        priority,
+        investigatorLead: user?.displayName ?? 'Unassigned',
+        createdBy: user.id,
+        victimPersonIds: victimIds,
+        suspectPersonIds: suspectIds,
+        relatedEntityIds: relatedIds,
+      });
+      pushToast(`${created.code} created.`, 'success');
+      reset();
+      onClose();
+      navigate(`/cases/${created.id}`);
+    } catch (err) {
+      // Never fake success: if Supabase persistence failed (e.g. the
+      // supabase/migrations/*_create_cases.sql migration hasn't been run
+      // against the project yet), surface it clearly and keep the modal
+      // open with the analyst's input intact instead of navigating away.
+      const message = err instanceof Error ? err.message : 'Failed to create case. Please try again.';
+      pushToast(message, 'danger');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -137,7 +157,7 @@ export function NewCaseModal({ open, onClose }: { open: boolean; onClose: () => 
 
         <div className="row gap-2" style={{ justifyContent: 'flex-end', marginTop: 6 }}>
           <button type="button" className="btn btn-ghost" onClick={handleClose}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={!name.trim()}>Create Case</button>
+          <button type="submit" className="btn btn-primary" disabled={!name.trim() || submitting}>{submitting ? 'Creating…' : 'Create Case'}</button>
         </div>
       </form>
     </Modal>

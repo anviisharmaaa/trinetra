@@ -1,29 +1,71 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Phone, MessageSquare, MapPin, IndianRupee, Camera, Share2, FileText, Users, Bell, Briefcase } from 'lucide-react';
 import { useTimelineStore, ALL_TIMELINE_TYPES } from '../store/timelineStore';
 import { useInvestigationStore } from '../store/investigationStore';
+import { useCaseStore } from '../store/caseStore';
+import { useCaseIntelligenceStore } from '../store/caseIntelligenceStore';
 import { LoadingState } from '../components/ui/LoadingState';
 import { ErrorState } from '../components/ui/ErrorState';
 import { EmptyState } from '../components/ui/EmptyState';
 import { getEntityById } from '../data';
 import type { TimelineEvent, TimelineEventType } from '../types';
 import { formatDate, formatTime } from '../utils/formatters';
+import { caseNarrativeService } from '../services/caseNarrativeService';
 
 const TYPE_ICON: Record<TimelineEventType, typeof Phone> = {
   call: Phone, message: MessageSquare, movement: MapPin, transaction: IndianRupee,
   cctv: Camera, social: Share2, document: FileText, meeting: Users, alert: Bell, case: Briefcase,
 };
 
+function dedupeIds(ids: string[]): string[] {
+  return [...new Set(ids.filter(Boolean))];
+}
+
 export function TimelinePage() {
   const { caseId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { status, events, zoom, activeTypes, selectedEventId, loadCase, setZoom, toggleType, selectEvent } = useTimelineStore();
+  const { status, error, events, zoom, activeTypes, selectedEventId, loadCase, setZoom, toggleType, selectEvent } = useTimelineStore();
   const { selectEntity, selectLocation, selectTimestamp } = useInvestigationStore();
+  const { cases } = useCaseStore();
+  const { allPersonIds, loadCase: loadCaseIntelligence } = useCaseIntelligenceStore();
   const highlightRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
-  useEffect(() => { if (caseId) loadCase(caseId); }, [caseId, loadCase]);
+  const activeCase = cases.find((c) => c.id === caseId);
+
+  // For a real LED case, every person on the case file is a real Master
+  // Dataset id (there's no victim/suspect split in the Postgres case_persons
+  // join) — fetched once via the same cached case-detail call
+  // LedCaseOverview uses, so this never issues a second network request.
+  const [ledPersonIds, setLedPersonIds] = useState<string[]>([]);
+  useEffect(() => {
+    if (!activeCase?.isLedCase || !caseId) {
+      setLedPersonIds([]);
+      return;
+    }
+    let cancelled = false;
+    caseNarrativeService.getLedCaseDetail(caseId).then((detail) => {
+      if (!cancelled && detail) setLedPersonIds(detail.persons.map((p) => p.person_id));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCase?.isLedCase, caseId]);
+
+  const realPersonIds = useMemo(() => {
+    const linked = [...allPersonIds, ...ledPersonIds];
+    return dedupeIds(linked.filter((id) => !getEntityById(id)));
+  }, [allPersonIds, ledPersonIds]);
+
+  useEffect(() => {
+    if (caseId) loadCaseIntelligence(caseId);
+  }, [caseId, loadCaseIntelligence]);
+
+  useEffect(() => {
+    if (caseId) loadCase(caseId, undefined, realPersonIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseId, loadCase, realPersonIds.join(',')]);
 
   // Deep-link support for "View in Timeline" from CCTV: `?event=TL-XXX`
   // selects and scrolls to that entry once events are loaded.
@@ -48,7 +90,15 @@ export function TimelinePage() {
   }, [events, activeTypes, zoom]);
 
   if (status === 'loading' || status === 'idle') return <LoadingState label="RECONSTRUCTING TIMELINE" />;
-  if (status === 'error') return <ErrorState title="TIMELINE UNAVAILABLE" message="Unable to load chronological event data." onRetry={() => caseId && loadCase(caseId)} />;
+  if (status === 'error') {
+    return (
+      <ErrorState
+        title="TIMELINE UNAVAILABLE"
+        message={error ?? 'Unable to load chronological event data.'}
+        onRetry={() => caseId && loadCase(caseId, undefined, realPersonIds)}
+      />
+    );
+  }
 
   function handleSelect(ev: TimelineEvent) {
     selectEvent(ev.id);
@@ -93,9 +143,19 @@ export function TimelinePage() {
         ) : (
           <div className="stack" style={{ position: 'relative', paddingLeft: 20, borderLeft: '2px solid var(--border)' }}>
             {filtered.map((ev) => {
-              const day = formatDate(ev.timestamp);
+              // displayDate/displayTime are set only for narrative-derived
+              // events (see caseNarrativeService.narrativeNoteToTimelineEvent)
+              // and are pre-formatted from the backend's plain date/time
+              // strings without ever constructing a `Date` object — using
+              // them here instead of formatDate/formatTime(ev.timestamp)
+              // keeps the calendar date exactly what the backend supplied,
+              // regardless of the investigator's browser timezone. Every
+              // other event (mock, live Master Dataset) is unaffected —
+              // these fields are simply undefined for them.
+              const day = ev.displayDate ?? formatDate(ev.timestamp);
               const showDay = day !== lastDay;
               lastDay = day;
+              const timeLabel = ev.displayDate !== undefined ? (ev.displayTime ?? 'Time unavailable') : formatTime(ev.timestamp);
               const Icon = TYPE_ICON[ev.eventType];
               const loc = ev.locationId ? getEntityById(ev.locationId) : undefined;
               return (
@@ -125,14 +185,27 @@ export function TimelinePage() {
                     <div className="stack" style={{ minWidth: 0, flex: 1 }}>
                       <div className="row" style={{ justifyContent: 'space-between' }}>
                         <span style={{ fontSize: 12.5, fontWeight: 600 }}>{ev.title}</span>
-                        <span className="text-muted mono" style={{ fontSize: 10.5 }}>{formatTime(ev.timestamp)}</span>
+                        <span className="text-muted mono" style={{ fontSize: 10.5 }}>{timeLabel}</span>
                       </div>
                       {ev.description && <span className="text-secondary" style={{ fontSize: 11.5 }}>{ev.description}</span>}
-                      <div className="row gap-2" style={{ marginTop: 2, flexWrap: 'wrap' }}>
+                      <div className="row gap-2" style={{ marginTop: 2, flexWrap: 'wrap', alignItems: 'center' }}>
                         {ev.entityIds.map((id) => {
                           const ent = getEntityById(id);
-                          return <span key={id} className="badge badge-neutral" style={{ fontSize: 9.5 }}>{ent?.name ?? id}</span>;
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              className="badge badge-neutral"
+                              style={{ fontSize: 9.5, border: 'none', cursor: 'pointer' }}
+                              onClick={(e) => { e.stopPropagation(); selectEntity(id); navigate(`/cases/${caseId}/person/${id}`); }}
+                            >
+                              {ent?.name ?? id}
+                            </button>
+                          );
                         })}
+                        {ev.sourceRef && (
+                          <span className="text-muted mono" style={{ fontSize: 9 }}>Source: {ev.sourceRef}</span>
+                        )}
                         {loc && (
                           <button
                             type="button"

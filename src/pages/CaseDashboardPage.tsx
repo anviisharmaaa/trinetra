@@ -11,15 +11,36 @@ import { ENTITY_LABELS, riskBadgeClass } from '../utils/entityMeta';
 import { formatRelativeTime } from '../utils/formatters';
 import { computeCaseRisk } from '../utils/riskAssessment';
 import { getEntityById } from '../data';
+import { personService } from '../services/personService';
 import type { Entity, PersonEntity, TimelineEvent, Evidence } from '../types';
 import { useInvestigationStore } from '../store/investigationStore';
+import { useCaseIntelligenceStore } from '../store/caseIntelligenceStore';
 import { PersonAvatar } from '../components/ui/EntityImage';
 import { personImage } from '../config/imageAssets';
+import { LedCaseOverview } from '../components/cases/LedCaseOverview';
+
+/** Resolves a Person ID against the small in-memory demo dataset first,
+ * then the real Master Dataset backend — so a Case Builder link to a real
+ * dataset person (not just a demo person) still resolves and displays here. */
+async function resolveCasePerson(id: string): Promise<Entity | undefined> {
+  const mock = getEntityById(id);
+  if (mock && mock.type === 'person') return mock;
+  const raw = await personService.getPersonRaw(id);
+  if (!raw) return undefined;
+  return {
+    id: raw.person_id, caseIds: [], type: 'person', name: raw.name,
+    riskLevel: (raw.risk_level ?? 'unknown').toLowerCase() as Entity['riskLevel'],
+    status: (raw.status ?? '').toLowerCase() === 'active' ? 'active' : 'inactive',
+    metadata: { nationality: raw.nationality ?? undefined, occupation: raw.occupation ?? undefined },
+    sourceIds: ['master-dataset'], createdAt: '', updatedAt: '',
+  } as Entity;
+}
 
 export function CaseDashboardPage() {
   const { caseId } = useParams();
   const navigate = useNavigate();
   const { cases } = useCaseStore();
+  const { allPersonIds, loadCase: loadCaseIntelligence } = useCaseIntelligenceStore();
   const selectEntity = useInvestigationStore((s) => s.selectEntity);
   const [people, setPeople] = useState<PersonEntity[]>([]);
   const [entities, setEntities] = useState<Entity[]>([]);
@@ -27,6 +48,7 @@ export function CaseDashboardPage() {
   const [milestones, setMilestones] = useState<TimelineEvent[]>([]);
   const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [loading, setLoading] = useState(true);
+  const [caseEntities, setCaseEntities] = useState<{ victims: Entity[]; suspects: Entity[]; related: Entity[] }>({ victims: [], suspects: [], related: [] });
 
   useEffect(() => {
     if (!caseId) return;
@@ -48,18 +70,43 @@ export function CaseDashboardPage() {
   const activeCase = cases.find((c) => c.id === caseId);
   const locations = entities.filter((e) => e.type === 'location');
 
+  // Linked-entity ids on the case are optional (older cases predate this
+  // field), so a missing array simply resolves to nothing — never an error.
+  // Each Person ID is resolved against the demo dataset first, then the real
+  // Master Dataset backend, so a case can link either a legacy demo person
+  // or a real ingested Person ID; related entities (any type) stay on the
+  // demo dataset for now.
+  useEffect(() => {
+    if (!activeCase) return;
+    let cancelled = false;
+    loadCaseIntelligence(activeCase.id);
+    Promise.all([
+      Promise.all((allPersonIds ?? []).map(resolveCasePerson)),
+      Promise.all((allPersonIds ?? []).map(() => Promise.resolve(undefined))),
+    ]).then(([resolved]) => {
+      if (cancelled) return;
+      const linkedPeople = resolved.filter((e): e is Entity => !!e);
+      setCaseEntities({
+        victims: linkedPeople.filter((e) => activeCase.victimPersonIds?.includes(e.id) ?? false),
+        suspects: linkedPeople.filter((e) => activeCase.suspectPersonIds?.includes(e.id) ?? false),
+        related: (activeCase.relatedEntityIds ?? []).map(getEntityById).filter((e): e is Entity => !!e),
+      });
+    });
+    return () => { cancelled = true; };
+  }, [activeCase, allPersonIds, loadCaseIntelligence]);
+
   if (!activeCase) return <LoadingState label="LOADING CASE" />;
+
+  // Real LED case (Postgres `cases`, e.g. "CASE-0001427") -- a completely
+  // separate render path driven by the narrative endpoint, never the
+  // Supabase-oriented overview below. The Supabase analyst-case rendering
+  // for every other case is untouched by this branch.
+  if (activeCase.isLedCase) return <LedCaseOverview caseId={activeCase.id} />;
 
   const risk = computeCaseRisk(activeCase);
   const DeltaIcon = risk.delta >= 0 ? TrendingUp : TrendingDown;
 
-  // Linked-entity ids on the case are optional (older cases predate this
-  // field), so a missing array simply resolves to nothing — never an error.
-  // Resolution always goes through the existing entity dataset by ID; the
-  // case itself stores no person data of its own.
-  const victims = (activeCase.victimPersonIds ?? []).map(getEntityById).filter((e): e is PersonEntity => !!e && e.type === 'person');
-  const suspects = (activeCase.suspectPersonIds ?? []).map(getEntityById).filter((e): e is PersonEntity => !!e && e.type === 'person');
-  const relatedEntities = (activeCase.relatedEntityIds ?? []).map(getEntityById).filter((e): e is Entity => !!e);
+  const { victims, suspects, related: relatedEntities } = caseEntities;
   const hasCaseEntities = victims.length > 0 || suspects.length > 0 || relatedEntities.length > 0;
 
   function openEntity(entity: Entity) {

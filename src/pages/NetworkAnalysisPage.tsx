@@ -13,6 +13,8 @@ import { ErrorState } from '../components/ui/ErrorState';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useGraphStore } from '../store/graphStore';
 import { useInvestigationStore } from '../store/investigationStore';
+import { useCaseStore } from '../store/caseStore';
+import { useCaseIntelligenceStore } from '../store/caseIntelligenceStore';
 import { buildSubjectGraph } from '../components/graph/subjectGraph';
 import { getEntityById, mockRelationships } from '../data';
 import { DEFAULT_ANALYSIS_STEPS } from '../utils/mockDelay';
@@ -30,10 +32,24 @@ export function NetworkAnalysisPage() {
     viewMode, layout, searchQuery, centerEntityId, primarySubjectId, expandedGroups, setCenter, expandGroup,
   } = useGraphStore();
   const { selectedEntityId, selectedRelationshipId, selectEntity, selectRelationship } = useInvestigationStore();
+  const { cases } = useCaseStore();
+  const { allPersonIds, loadCase: loadCaseIntelligence } = useCaseIntelligenceStore();
+
+  const activeCase = cases.find((c) => c.id === caseId);
+  const realPersonIds = useMemo(() => {
+    if (!caseId) return [];
+    const linked = caseId === activeCase?.id ? allPersonIds : [];
+    return linked.filter((id) => !getEntityById(id));
+  }, [activeCase?.id, allPersonIds, caseId]);
 
   useEffect(() => {
-    if (caseId) loadCaseGraph(caseId);
-  }, [caseId, loadCaseGraph]);
+    if (caseId) loadCaseIntelligence(caseId);
+  }, [caseId, loadCaseIntelligence]);
+
+  useEffect(() => {
+    if (caseId) loadCaseGraph(caseId, realPersonIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseId, loadCaseGraph, realPersonIds.join(',')]);
 
   useEffect(() => {
     function onFsChange() { setIsFullscreen(!!document.fullscreenElement); }
@@ -75,7 +91,12 @@ export function NetworkAnalysisPage() {
   }, [subjectGraph]);
 
   const panelEntityId = selectedEntityId ?? centerEntityId;
-  const panelEntity = panelEntityId ? getEntityById(panelEntityId) : undefined;
+  // A selected/centered node might be a real Master Dataset person, which
+  // won't be in the mock dataset getEntityById reads from — fall back to
+  // whatever loadCaseGraph already fetched into the store for this case.
+  const panelEntity = panelEntityId
+    ? (getEntityById(panelEntityId) ?? entities.find((e) => e.id === panelEntityId))
+    : undefined;
   const panelRelationship = selectedRelationshipId ? mockRelationships.find((r) => r.id === selectedRelationshipId) : undefined;
 
   function toggleFullscreen() {

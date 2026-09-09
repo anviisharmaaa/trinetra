@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Entity, EntityType, Relationship, RelationshipType } from '../types';
 import { graphService } from '../services/graphService';
+import { ApiUnavailableError } from '../services/apiClient';
 import { pickDefaultCenter, groupKey } from '../components/graph/subjectGraph';
 
 // Network Analysis intentionally never renders the whole case graph at
@@ -33,7 +34,11 @@ interface GraphState {
   primarySubjectId: string | null;
   expandedGroups: Set<string>;
 
-  loadCaseGraph: (caseId: string) => Promise<void>;
+  /** `realPersonIds`: Person IDs linked to this case that live in the real
+   * Master Dataset backend (not the small in-memory demo dataset) — see
+   * NetworkAnalysisPage, which derives this from the active case's
+   * victim/suspect Person IDs. */
+  loadCaseGraph: (caseId: string, realPersonIds?: string[]) => Promise<void>;
   expandEntity: (entityId: string) => Promise<void>;
   hideEntity: (id: string) => void;
   resetHidden: () => void;
@@ -70,10 +75,10 @@ export const useGraphStore = create<GraphState>((set) => ({
   primarySubjectId: null,
   expandedGroups: new Set(),
 
-  loadCaseGraph: async (caseId) => {
+  loadCaseGraph: async (caseId, realPersonIds = []) => {
     set({ status: 'loading', error: null, hiddenIds: new Set(), expandedGroups: new Set() });
     try {
-      const data = await graphService.getCaseGraph(caseId);
+      const data = await graphService.getCaseGraph(caseId, realPersonIds);
       const defaultCenter = pickDefaultCenter(data.entities, data.relationships);
       set({
         entities: data.entities,
@@ -82,8 +87,13 @@ export const useGraphStore = create<GraphState>((set) => ({
         centerEntityId: defaultCenter?.id ?? null,
         primarySubjectId: defaultCenter?.id ?? null,
       });
-    } catch {
-      set({ status: 'error', error: 'DATA SOURCE UNAVAILABLE' });
+    } catch (err) {
+      // A real (Master Dataset) case whose backend is unreachable gets an
+      // explicit, distinct error — never a silent empty/mock graph.
+      const message = err instanceof ApiUnavailableError
+        ? 'MASTER DATASET BACKEND UNAVAILABLE'
+        : 'DATA SOURCE UNAVAILABLE';
+      set({ status: 'error', error: message });
     }
   },
   expandEntity: async (entityId) => {
